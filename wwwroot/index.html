@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css"
+      integrity="sha384-xOolHFLEh07PJGoPkLv1IbcEPTNtaed2xpHsD9ESMhqIYd0nLMwNLD69Npy4HI+N"
+      crossorigin="anonymous"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.slim.min.js"
+      integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-Fy6S3B9q64WdZWQUiU+q4/2Lc9npb8tCaSX9FK7E8HnRr0Jz8D6OP9dO5Vg3Q9ct"
+      crossorigin="anonymous"
+    ></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+      .resultContainer {
+        z-index: 1010;
+        margin-top: -20px;
+        padding-top: 10px;
+        background: white;
+        border: 1px solid #bdbdbd;
+        padding: 15px !important;
+        position: absolute;
+      }
+      .resultItem {
+        text-decoration: none;
+        padding: 0.5em;
+      }
+      .resultItem:has(a:hover) {
+        cursor: pointer;
+        background: rgb(79, 79, 116);
+        color: #f5f5f5;
+      }
+    </style>
+
+    <script>
+      function app() {
+        return {
+          offsets: {
+            temp: { x: 60, y: 130, w: 528, h: 90 },
+            wind: { x: 60, y: 240, w: 528, h: 90 },
+            hours: { y: 75 },
+            windArrows: { y: 340 }
+          },
+          colors: {
+            cellStroke: "#C4C4B8",
+            mainStroke: "#8DA9B8",
+            mainFill: "#DCDCD3",
+            cellDarkBackground: "#E8EAE6",
+            cellLightBackgrund: "#FFFFFF",
+            rainFill: "#334980",
+            redLine: "#C92C29",
+            darkLine: "#464646",
+            dayLine: "#000000"
+          },
+          sprites: {
+            sunny: { x: 38 * 0, y: 38 * 5, w: 26, h: 26 },
+            heavyrain: { x: 38 * 0, y: 38 * 0, w: 38, h: 38 },
+            rain: { x: 38 * 0, y: 38 * 2, w: 29, h: 38 },
+            cloudy: { x: 38 * 0, y: 38 * 1, w: 37, h: 38 },
+            night: { x: 38 * 0, y: 38 * 4, w: 34, h: 38 },
+            nightcloud: { x: 38 * 0, y: 38 * 3, w: 34, h: 38 },
+            cloudysun: { x: 38 * 1, y: 38 * 1, w: 38, h: 38 },
+            heavyrainsun: { x: 38 * 1, y: 38 * 0, w: 38, h: 38 },
+            arrow: { x: 38 * 1, y: 38 * 2, w: 8, h: 11 }
+          },
+          fonts: {
+            cityname: "bold 20px tahoma",
+            hourlabels: "bold 15px tahoma",
+            info: "11px tahoma",
+            daynames: "bold 12px tahoma"
+          },
+          apidata: "",
+          loading: false,
+          lat: "",
+          long: "",
+          gpsLocation: null,
+          canvas: "",
+          ctx: "",
+
+          init() {
+            this.canvas = this.$refs.canvas;
+            if (this.canvas.getContext) {
+              ctx = this.canvas.getContext("2d");
+            }
+            this.loading = true;
+            let spriteLoader = new Promise((resolve, reject) => {
+              let img = new Image();
+              img.onload = () => resolve(img);
+              img.onerror = reject;
+              img.src = "/icons.png";
+            });
+
+            this.long = new URLSearchParams(location.search).get("long") || "12.563295";
+            this.lat = new URLSearchParams(location.search).get("lat") || "55.706079";
+
+            this.getLocation((long, lat) => {
+              this.gpsLocation = { long: long, lat: lat };
+            });
+
+            spriteLoader.then((v) => {
+              console.log(v);
+              this.sprites["sheet"] = v;
+              this.loadForecast(this.long, this.lat, false);
+            });
+          },
+
+          getLocation: (callback) => {
+            if (navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition((pos) => {
+                callback(pos.coords.longitude, pos.coords.latitude);
+              });
+            } else {
+              console.warn("Geolocation is not supported by this browser.");
+            }
+          },
+
+          loadCityName: async function (long, lat) {
+            let url = `/getCityName?x=${long}&y=${lat}`;
+            const response = await fetch(url);
+            const json = await response.json();
+            console.log("Found cityname: " + json.navn);
+            return json;
+          },
+
+          loadForecast: async function (long, lat, store = true, cityname = null) {
+            console.log(`Loading weather data for: ${name} POINT(${long} ${lat})`);
+            this.long = long;
+            this.lat = lat;
+
+            if (store) {
+              const url = new URL(window.location.href);
+              url.searchParams.set("lat", lat);
+              url.searchParams.set("long", long);
+              history.pushState(null, document.title, url.toString());
+            }
+
+            this.loading = true;
+
+            const response = await fetch(`/getForecast?x=${long}&y=${lat}`);
+            this.apidata = await response.json();
+
+            this.apidata.data = this.apidata.features;
+            this.apidata.startTime = new Date(this.apidata.features[0].properties["step"]);
+            this.apidata.startHour = this.apidata.startTime.getHours();
+            this.apidata.coords = this.apidata.features[0].geometry.coordinates;
+            this.apidata.cityname = cityname || (await this.loadCityName(this.apidata.coords[0], this.apidata.coords[1])).navn;
+            // Precalulate a few fields so all data can be used without further calculations
+            this.apidata.data.forEach((v, i) => {
+              v.temperature = v.properties["temperature-2m"] - 273.15;
+              v.precipitation =
+                i === 0
+                  ? v.properties["total-precipitation"]
+                  : v.properties["total-precipitation"] - this.apidata.data[i - 1].properties["total-precipitation"];
+            });
+
+            this.drawGraph();
+            this.loading = false;
+          },
+
+          drawGraph: function () {
+            console.log("drawGraph()");
+            console.log(this.apidata);
+            console.log(this.canvas);
+            console.log(ctx);
+
+            // main background and border
+            ctx.lineJoin = "round";
+            ctx.fillStyle = this.colors.mainFill;
+            ctx.strokeStyle = this.colors.mainStroke;
+            ctx.lineWidth = 2;
+            ctx.roundRect(0, 0, this.canvas.width, this.canvas.height, 5);
+            ctx.fill();
+            ctx.stroke();
+
+            this.drawHeader();
+
+            this.drawTemperature();
+
+            this.drawWind();
+          },
+
+          drawHeader: function () {
+            ctx.fillStyle = "#000000";
+            ctx.font = this.fonts.cityname;
+            ctx.textBaseline = "top";
+            ctx.textAlign = "left";
+            ctx.fillText(this.apidata.cityname, 10, 10);
+
+            // Draw 3rd hour labels
+            ctx.fillStyle = "#000000";
+            ctx.font = this.fonts.hourlabels;
+            ctx.textBaseline = "bottom";
+            ctx.textAlign = "center";
+            for (let i = 0; i < 48; i++) {
+              if ((this.apidata.startHour + i) % 3 == 0) {
+                let xOffset = (this.offsets.temp.w * i) / 48;
+                ctx.fillText((this.apidata.startHour + i) % 24, this.offsets.temp.x + xOffset, this.offsets.hours.y);
+              }
+            }
+
+            // Draw 3rd hour icons
+            for (let i = 0; i < 48; i++) {
+              const hour = this.apidata.startHour + i;
+              if (hour % 3 == 0) {
+                const icon = this.calcIconValues(i, hour);
+                const xOffset = (this.offsets.temp.w * i) / 48;
+                ctx.drawImage(
+                  this.sprites.sheet,
+                  this.sprites[icon].x,
+                  this.sprites[icon].y,
+                  this.sprites[icon].w,
+                  this.sprites[icon].h,
+                  this.offsets.temp.x + xOffset - this.sprites[icon].w / 2,
+                  this.offsets.hours.y,
+                  this.sprites[icon].w,
+                  this.sprites[icon].h
+                );
+              }
+            }
+
+            // Info thingie
+            ctx.font = this.fonts.info;
+            ctx.textBaseline = "middle";
+            ctx.textAlign = "left";
+            ctx.fillStyle = "#000000";
+            ctx.fillText("Nedbør", this.offsets.temp.x - 50, this.offsets.temp.y - 30);
+
+            ctx.fillStyle = this.colors.rainFill;
+            ctx.fillRect(this.offsets.temp.x - 50, this.offsets.temp.y - 23, 12, 12);
+          },
+
+          drawTemperature: function () {
+            // border of graph
+            ctx.strokeStyle = this.colors.cellStroke;
+            ctx.strokeRect(this.offsets.temp.x - 0.5, this.offsets.temp.y - 0.5, this.offsets.temp.w, this.offsets.temp.h);
+
+            // Decide on graph y-axis limits
+            let tempMin = Math.min(...this.apidata.data.map((v) => v.temperature));
+            let tempMax = Math.max(...this.apidata.data.map((v) => v.temperature));
+            tempMin = Math.floor(tempMin / 5) * 5;
+            tempMax = Math.ceil(tempMax / 5) * 5;
+
+            this.drawRows(tempMin, tempMax, this.offsets.temp);
+
+            // Add temperature y axis labels
+            let divisions = tempMax / 5 - tempMin / 5;
+            let cellHeight = this.offsets.temp.h / divisions;
+            for (let i = 0; i < divisions + 1; i++) {
+              ctx.fillStyle = "#000000";
+              ctx.font = this.fonts.info;
+
+              ctx.textBaseline = "middle";
+              ctx.textAlign = "right";
+              ctx.fillText(
+                tempMin + i * 5 + " °C",
+                this.offsets.temp.x + this.offsets.temp.w + 45,
+                this.offsets.temp.y + this.offsets.temp.h - i * cellHeight
+              );
+            }
+
+            this.drawDayHeader(this.offsets.temp);
+
+            this.draw6hrDividers(this.offsets.temp);
+
+            // Calculate maximum precipication
+            let maxPrecip = Math.ceil(Math.max(5, ...this.apidata.data.map((v) => v.precipitation)));
+
+            // Draw rain bars
+            this.apidata.features.slice(0, 48).forEach((v) => {
+              let x = Date.parse(v.properties["step"]);
+              x = x - this.apidata.startTime; // ms since start time
+              x *= this.offsets.temp.w;
+              x /= 1000 * 60 * 60 * 24 * 2;
+
+              let y = v.precipitation / maxPrecip;
+              ctx.fillStyle = this.colors.rainFill;
+              if (y > 0) {
+                ctx.fillRect(
+                  this.offsets.temp.x + x,
+                  this.offsets.temp.y + this.offsets.temp.h - this.offsets.temp.h * y - 1,
+                  this.offsets.temp.w / 48 - 2,
+                  this.offsets.temp.h * y
+                );
+              }
+            });
+
+            // Draw rain level labels
+            let divider = 1;
+            if (maxPrecip / divider > 5) divider = 2;
+            if (maxPrecip / divider > 5) divider = 5;
+            if (maxPrecip / divider > 5) divider = 10;
+            cellHeight = this.offsets.temp.h / (maxPrecip / divider);
+            for (let i = 0; i < maxPrecip / divider; i++) {
+              ctx.fillStyle = "#000000";
+              ctx.font = this.fonts.info;
+              ctx.textBaseline = "middle";
+              ctx.textAlign = "right";
+              ctx.fillText(
+                (i + 1) * divider + " mm",
+                this.offsets.temp.x - 8,
+                this.offsets.temp.y + this.offsets.temp.h - (i + 1) * cellHeight
+              );
+            }
+            ctx.fillText("0 mm", this.offsets.temp.x - 8, this.offsets.temp.y + this.offsets.temp.h);
+
+            ctx.strokeStyle = this.colors.redLine;
+            ctx.lineWidth = 4;
+            this.drawLines(this.offsets.temp, (v) => v.temperature, tempMin, tempMax);
+          },
+
+          drawWind: function () {
+            ctx.strokeStyle = this.colors.cellStroke;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(this.offsets.wind.x - 0.5, this.offsets.wind.y - 0.5, this.offsets.wind.w, this.offsets.wind.h);
+
+            let windMax = Math.max(...this.apidata.features.slice(0, 48).map((v) => v.properties["gust-wind-speed-10m"]));
+            windMax = Math.ceil(windMax / 5) * 5;
+
+            this.drawRows(0, windMax, this.offsets.wind);
+            this.draw6hrDividers(this.offsets.wind);
+
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = this.colors.darkLine;
+            this.drawLines(this.offsets.wind, (v) => v.properties["wind-speed"], 0, windMax);
+
+            ctx.strokeStyle = this.colors.redLine;
+            this.drawLines(this.offsets.wind, (v) => v.properties["gust-wind-speed-10m"], 0, windMax);
+
+            // Add wind y axis labels
+            let divisions = windMax / 5;
+            let cellHeight = this.offsets.wind.h / divisions;
+            ctx.fillStyle = "#000000";
+            ctx.font = this.fonts.info;
+            ctx.textBaseline = "middle";
+            ctx.textAlign = "right";
+            for (let i = 0; i < divisions; i++) {
+              ctx.fillText(
+                (i + 1) * 5 + " m/s",
+                this.offsets.wind.x + this.offsets.wind.w + 45,
+                this.offsets.wind.y + this.offsets.wind.h - (i + 1) * cellHeight
+              );
+            }
+            ctx.fillText("0 m/s", this.offsets.wind.x + this.offsets.wind.w + 45, this.offsets.wind.y + this.offsets.wind.h);
+
+            // static wind labels
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillText("Vind-", this.offsets.wind.x - 50, this.offsets.wind.y);
+            ctx.fillText("stød", this.offsets.wind.x - 50, this.offsets.wind.y + 14);
+            ctx.strokeStyle = this.colors.redLine;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(this.offsets.wind.x - 50, this.offsets.wind.y + 28);
+            ctx.lineTo(this.offsets.wind.x - 10, this.offsets.wind.y + 28);
+            ctx.stroke();
+
+            ctx.fillText("Middel-", this.offsets.wind.x - 50, this.offsets.wind.y + 40);
+            ctx.fillText("vind", this.offsets.wind.x - 50, this.offsets.wind.y + 54);
+
+            ctx.strokeStyle = this.colors.darkLine;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(this.offsets.wind.x - 50, this.offsets.wind.y + 70);
+            ctx.lineTo(this.offsets.wind.x - 10, this.offsets.wind.y + 70);
+            ctx.stroke();
+
+            // Draw Arrows
+            for (let i = 0; i < 48; i++) {
+              if ((this.apidata.startHour + i) % 3 == 0) {
+                let xOffset = (this.offsets.temp.w * i) / 48;
+                let ofs = this.sprites["arrow"];
+                let angle = this.apidata.features[i].properties["wind-dir"] + 180; // because we are rotating the canvas it's 180deg off (i think?)
+
+                ctx.save();
+                ctx.translate(this.offsets.temp.x + xOffset, this.offsets.windArrows.y);
+                ctx.rotate((angle * Math.PI) / 180);
+
+                ctx.drawImage(this.sprites.sheet, ofs.x, ofs.y, ofs.w, ofs.h, -ofs.w / 2, -ofs.h / 2, ofs.w, ofs.h);
+                ctx.restore();
+              }
+            }
+          },
+
+          drawRows: function (min, max, offset) {
+            // draw background rows
+            let divisions = max / 5 - min / 5;
+            let cellHeight = offset.h / divisions;
+            for (let i = 0; i < divisions; i++) {
+              ctx.lineWidth = 1;
+              ctx.fillStyle = i % 2 == 1 ? this.colors.cellDarkBackground : this.colors.cellLightBackgrund;
+
+              ctx.fillRect(offset.x, offset.y + offset.h - (i + 1) * cellHeight, offset.w, cellHeight);
+              ctx.strokeRect(offset.x - 0.5, offset.y + offset.h - (i + 1) * cellHeight - 0.5, offset.w, cellHeight);
+            }
+          },
+
+          draw6hrDividers: function (offset) {
+            for (let i = 0; i < 48; i++) {
+              if ((this.apidata.startHour + i) % 6 == 0) {
+                let xOffset = (offset.w * i) / 48;
+                ctx.strokeStyle = this.colors.cellStroke;
+                ctx.strokeStyle = (this.apidata.startHour + i) % 24 == 0 ? this.colors.dayLine : this.colors.cellStroke;
+                ctx.beginPath();
+                ctx.moveTo(offset.x + xOffset - 0.5, offset.y + 0.5);
+                ctx.lineTo(offset.x + xOffset - 0.5, offset.y + offset.h - 1.5);
+                ctx.stroke();
+              }
+            }
+          },
+
+          drawDayHeader: function (offset) {
+            // Put name of the day when reaching hour 0
+            for (let i = 0; i < 48; i++) {
+              if ((this.apidata.startHour + i) % 24 == 0) {
+                let xOffset = (offset.w * i) / 48;
+                let dayName = new Date(this.apidata.startTime.getTime() + i * 60 * 60 * 1000).toLocaleDateString("da-dk", {
+                  weekday: "long"
+                });
+                ctx.fillStyle = "#000000";
+                ctx.font = this.fonts.daynames;
+                ctx.textBaseline = "bottom";
+                ctx.textAlign = "left";
+                ctx.fillText(dayName, offset.x + xOffset, offset.y - 4);
+              }
+            }
+          },
+
+          drawLines: function (offset, prop, min, max) {
+            // Draw temperatur line
+            ctx.beginPath();
+            this.apidata.data.forEach((v, index) => {
+              let x = Date.parse(v.properties["step"]);
+              x = x - this.apidata.startTime; // ms since start time
+              x *= offset.w;
+              x /= 1000 * 60 * 60 * 24 * 2; // 2 days
+              let value = prop(v);
+              let y = 1 - (value - min) / (max - min);
+
+              if (index === 0) {
+                ctx.moveTo(offset.x + x - 0.5, offset.y + y * offset.h - 0.5);
+              } else if (x <= offset.w) {
+                ctx.lineTo(offset.x + x - 0.5, offset.y + y * offset.h - 0.5);
+              }
+            });
+            ctx.stroke();
+          },
+
+          calcIconValues: function (dataIndex, hour, hours = 3, lookback = -1) {
+            const avgRain = this.calculateAvgRain(this.apidata.data, dataIndex, hours, lookback);
+            const cloudCover = this.calculateAverage(this.apidata.data, dataIndex, hours, lookback, "fraction-of-cloud-cover");
+            const cloudTransmittance = this.calculateAverage(this.apidata.data, dataIndex, hours, lookback, "cloud-transmittance");
+            const prectype = this.apidata.features[dataIndex].properties["precipitation-type"]; // todo: find average?
+            let icon = "sunny";
+            const time = hour % 24;
+            if (time >= 22 || time <= 3) icon = "night";
+
+            if (cloudCover > 0.5) {
+              icon = "cloudy";
+              if (time >= 22 || time <= 3) icon = "nightcloud";
+            }
+
+            if (avgRain > 0.1) {
+              icon = "rain";
+              if (avgRain > 0.5) {
+                icon = "heavyrain";
+              }
+            }
+
+            if (icon == "heavyrain" && cloudTransmittance > 0.6) icon = "heavyrainsun";
+            if (icon == "cloudy" && cloudTransmittance > 0.6) icon = "cloudysun";
+
+            console.log(
+              "time: " +
+                time +
+                ", icon: " +
+                icon +
+                " - avgRain: " +
+                avgRain +
+                ", cloudCover: " +
+                cloudCover +
+                ", precType: " +
+                prectype +
+                ", cloudTransmittance: " +
+                cloudTransmittance
+            );
+            return icon;
+          },
+
+          calculateAverage: (data, dataIndex, hours, lookback, property) => {
+            let total = 0;
+            let sampleCount = 0;
+
+            for (let sample = 0; sample < hours; sample++) {
+              const index = dataIndex + sample + lookback;
+              if (index >= 0 && index < data.length) {
+                total += data[index].properties[property];
+                sampleCount++;
+              }
+            }
+            return total / sampleCount;
+          },
+
+          calculateAvgRain: (data, dataIndex, hours, lookback) => {
+            let avgRain = 0;
+            let sampleCount = 0;
+
+            for (let sample = 0; sample < hours; sample++) {
+              const index = dataIndex + sample + lookback;
+              if (index >= 0 && index < data.length) {
+                avgRain += data[index].precipitation;
+                sampleCount++;
+              }
+            }
+            return avgRain / sampleCount;
+          }
+        };
+      }
+
+      function dropdownSearch() {
+        return {
+          query: "",
+          results: [],
+
+          init() {
+            this.$watch("query", async (query) => {
+              if (query === "") {
+                this.results = [];
+              } else {
+                const response = await fetch(`/findCity/${query}`);
+                if (!response.ok) {
+                  console.error("Fetch error: " + response.statusText);
+                } else {
+                  this.results = await response.json();
+                }
+              }
+            });
+          },
+          handleQuery: async function (query) {
+            if (query === "") {
+              this.results = [];
+            } else {
+              const response = await fetch(`/findCity/${query}`);
+              if (!response.ok) {
+                console.error("Fetch error: " + response.statusText);
+              } else {
+                this.results = await response.json();
+              }
+            }
+          },
+          loadPostalCode: function (entry) {
+            let info = entry.postnummer;
+            this.loadForecast(info.visueltcenter_x, info.visueltcenter_y, true, info.navn);
+          },
+          reset() {
+            this.query = "";
+            this.results = [];
+          }
+        };
+      }
+    </script>
+  </head>
+  <body>
+    <div class="container-sm" x-data="app()">
+      <div class="row">
+        <div class="col-md"><h1>Endnubedrevejr.dk</h1></div>
+      </div>
+
+      <div class="row" x-data="dropdownSearch()">
+        <div class="col-md-4">
+          <input
+            type="text"
+            class="mb-2 rounded-md border focus:border-indigo-300 w-full px-2 py-2"
+            placeholder="Find by.."
+            x-model.debounce="query"
+            x-on:click.outside="reset()"
+            autofocus
+          />
+
+          <div
+            class="col-md-12 shadow p-3 mb-5 bg-white rounded-lg resultContainer"
+            x-show="results.length>0"
+            x-transition.duration.500
+            x-ref="results"
+          >
+            <template x-for="(result, index) in results" key="result.tekst">
+              <div class="row border-bottom resultItem">
+                <div class="col-sm">
+                  <a @click="loadPostalCode(result)" x-text="result.postnummer.nr"> </a>
+                  <a @click="loadPostalCode(result)" x-text="result.postnummer.navn" style="font-weight: 600"> </a>
+                </div>
+              </div>
+            </template>
+            <p x-show="query.length" class="help-text small-text text-muted m-0">
+              Din søgning på
+              <span x-text="query" class="text-primary"></span> gav
+              <span x-text="results.length" class="text-danger"></span>
+              resultater
+            </p>
+          </div>
+        </div>
+        <div class="col-md-2" x-show="loading">
+          Henter data...
+          <div class="spinner-border" role="status">
+            <span class="sr-only">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-2 mb-2">
+          <a href="#" x-show="gpsLocation !== null" @click="loadForecast(gpsLocation.long, gpsLocation.lat)"
+            ><svg height="32" viewBox="0 0 32 32" width="32" xmlns="http://www.w3.org/2000/svg">
+              <path d="m16 18a5 5 0 1 1 5-5 5.0057 5.0057 0 0 1 -5 5zm0-8a3 3 0 1 0 3 3 3.0033 3.0033 0 0 0 -3-3z" />
+              <path
+                d="m16 30-8.4355-9.9487c-.0479-.0571-.3482-.4515-.3482-.4515a10.8888 10.8888 0 0 1 -2.2163-6.5998 11 11 0 0 1 22 0 10.8844 10.8844 0 0 1 -2.2148 6.5973l-.0015.0025s-.3.3944-.3447.4474zm-7.1875-11.605c.001.0007.2334.3082.2866.3744l6.9009 8.1385 6.91-8.15c.0439-.0552.2783-.3649.2788-.3657a8.901 8.901 0 0 0 1.8112-5.3922 9 9 0 1 0 -18 0 8.9054 8.9054 0 0 0 1.8125 5.395z"
+              />
+              <path d="m0 0h32v32h-32z" fill="none" transform="matrix(0 -1 1 0 0 32)" />
+            </svg>
+            Find min lokation
+          </a>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md">
+          <canvas x-ref="canvas" width="640" height="360"></canvas>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

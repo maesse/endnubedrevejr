@@ -1,0 +1,34 @@
+# TODO:
+Kort til at vælge lokation
+
+graf hover support?
+
+docker image
+github
+
+3_9 dage? DMI siger dataen kommer herfra: https://www.ecmwf.int/
+
+usikkerheds data er dmi's secret sauce, kan man få ensemble information et andet sted fra?
+
+huske sidste/mest populære lokationer/gem med cookies/oauth stuff
+
+baggrunds service til at holde de mest populære lokationer cached
+
+resterende tekst på grafen (tidsinterval, tidspunkt grafen er lavet, long lat)
+
+ikon ide: hvert ikon er en blanding af flere mindre ikoner, så solen f.eks. langsomt forsvinder bag en sky som sol-gennemskæring (el skydække%) stiger, samme med regn og tung regn
+
+flere ikoner
+    sne/is
+    lyn
+
+# Parameters read from API:
+    temperature-2m
+    total-precipitation
+    wind-speed
+    wind-dir
+    gust-wind-speed-10m
+    fraction-of-cloud-cover
+    precipitation-type
+    direct-solar-exposure
+    cloud-transmittance
