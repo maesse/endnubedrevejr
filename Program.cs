@@ -1,10 +1,14 @@
+using System.Net.Http.Headers;
 using Microsoft.Extensions.ObjectPool;
+using Microsoft.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOutputCache(options =>
 {
+
     options.AddBasePolicy(builder =>
         builder.Expire(TimeSpan.FromSeconds(10)));
+    options.AddPolicy("ValidatingCache", builder => builder.Expire(TimeSpan.FromMinutes(30)).AddPolicy<ValidatingCachePolicy>());
     options.AddPolicy("Expire10min", builder =>
         builder.Expire(TimeSpan.FromMinutes(10)));
     options.AddPolicy("Expire30min", builder =>
@@ -23,19 +27,32 @@ app.MapGet("/findCity/{name}", async (string name) =>
 {
     var clientFactory = app.Services.GetService<IHttpClientFactory>();
     var client = clientFactory!.CreateClient();
-    var stream = await client.GetStreamAsync($"https://api.dataforsyningen.dk/postnumre/autocomplete?q={name}");
-    return Results.Stream(stream, "application/json");
 
-}).CacheOutput("Expire30min");
+    var response = await client.GetAsync($"https://api.dataforsyningen.dk/postnumre/autocomplete?q={name}");
+    if (response.IsSuccessStatusCode)
+    {
+        return Results.Stream(response.Content.ReadAsStream(), "application/json");
+    }
+
+    return Results.Problem("Got bad response");
+}).CacheOutput("ValidatingCache");
 
 app.MapGet("/getCityName", async (string x, string y) =>
 {
     var clientFactory = app.Services.GetService<IHttpClientFactory>();
     var client = clientFactory!.CreateClient();
-    var stream = await client.GetStreamAsync($"https://api.dataforsyningen.dk/postnumre/reverse?x={x}&y={y}");
-    return Results.Stream(stream, "application/json");
 
-}).CacheOutput("Expire30min");
+    var response = await client.GetAsync($"https://api.dataforsyningen.dk/postnumre/reverse?x={x}&y={y}");
+    if (response.IsSuccessStatusCode)
+    {
+        return Results.Stream(response.Content.ReadAsStream(), "application/json");
+    }
+
+    return Results.Problem("Got bad response");
+
+}).CacheOutput("ValidatingCache");
+
+
 
 app.MapGet("/getForecast", async (string x, string y) =>
 {
@@ -50,15 +67,20 @@ app.MapGet("/getForecast", async (string x, string y) =>
 
     if (apikey != null)
     {
-        var stream = await client.GetStreamAsync($"https://dmigw.govcloud.dk/v1/forecastedr/collections/harmonie_dini_sf/position?coords=POINT%28{x}%20{y}%29&parameter-name=temperature-2m,total-precipitation,wind-speed,wind-dir,gust-wind-speed-10m,fraction-of-cloud-cover,precipitation-type,direct-solar-exposure,cloud-transmittance&datetime={requestTime}%2F..&crs=crs84&f=GeoJSON&api-key={apikey}");
-        return Results.Stream(stream, "application/json");
+        var response = await client.GetAsync($"https://dmigw.govcloud.dk/v1/forecastedr/collections/harmonie_dini_sf/position?coords=POINT%28{x}%20{y}%29&parameter-name=temperature-2m,total-precipitation,wind-speed,wind-dir,gust-wind-speed-10m,fraction-of-cloud-cover,precipitation-type,direct-solar-exposure,cloud-transmittance&datetime={requestTime}%2F..&crs=crs84&f=GeoJSON&api-key={apikey}");
+        if (response.IsSuccessStatusCode)
+        {
+            return Results.Stream(response.Content.ReadAsStream(), "application/json");
+        }
+
+        return Results.Problem("Got bad response");
     }
     else
     {
         return Results.Problem("Missing api key");
     }
 
-}).CacheOutput("Expire30min");
+}).CacheOutput("ValidatingCache");
 
 
 app.Run();
