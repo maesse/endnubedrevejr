@@ -95,9 +95,8 @@ jobs:
         # against the sigstore community Fulcio instance.
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
 
-      - name: Make API Request
-        id: api-request
-        uses: muhfaris/request-action@v1
+      - name: API Request Action
+        uses: muhfaris/request-action@v0.1.2
         with:
           url: ${{ secrets.WEBHOOK_URL }}
 
