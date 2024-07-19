@@ -32,3 +32,4 @@ flere ikoner
     precipitation-type
     direct-solar-exposure
     cloud-transmittance
+
