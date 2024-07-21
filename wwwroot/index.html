@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title> endnubedrevejr.dk</title>
+    <title>endnubedrevejr.dk</title>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css"
@@ -275,6 +275,14 @@
             // Calculate maximum precipication
             let maxPrecip = Math.ceil(Math.max(5, ...this.apidata.data.map((v) => v.precipitation)));
 
+            let maxPrecipGraph = 1;
+            // Draw rain level labels
+            let divider = 1;
+            if (maxPrecip / divider > 5) divider = 2;
+            if (maxPrecip / divider > 5) divider = 5;
+            if (maxPrecip / divider > 5) divider = 10;
+            maxPrecipGraph = divider * Math.ceil(maxPrecip / divider);
+
             // Draw rain bars
             this.apidata.features.slice(0, 48).forEach((v) => {
               let x = Date.parse(v.properties["step"]);
@@ -282,7 +290,7 @@
               x *= this.offsets.temp.w;
               x /= 1000 * 60 * 60 * 24 * 2;
 
-              let y = v.precipitation / maxPrecip;
+              let y = v.precipitation / maxPrecipGraph;
               ctx.fillStyle = this.colors.rainFill;
               if (y > 0) {
                 ctx.fillRect(
@@ -294,13 +302,8 @@
               }
             });
 
-            // Draw rain level labels
-            let divider = 1;
-            if (maxPrecip / divider > 5) divider = 2;
-            if (maxPrecip / divider > 5) divider = 5;
-            if (maxPrecip / divider > 5) divider = 10;
-            cellHeight = this.offsets.temp.h / (maxPrecip / divider);
-            for (let i = 0; i < maxPrecip / divider; i++) {
+            cellHeight = this.offsets.temp.h / Math.ceil(maxPrecip / divider);
+            for (let i = 0; i < maxPrecipGraph / divider; i++) {
               ctx.fillStyle = "#000000";
               ctx.font = this.fonts.info;
               ctx.textBaseline = "middle";
