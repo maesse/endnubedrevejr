@@ -8,9 +8,27 @@ builder.Services.AddOutputCache(options =>
 
     options.AddBasePolicy(builder =>
         builder.Expire(TimeSpan.FromSeconds(10)));
-    options.AddPolicy("ValidatingCache", builder => builder.Expire(TimeSpan.FromMinutes(30)).AddPolicy<ValidatingCachePolicy>());
+
+    options.AddPolicy("ValidatingCache", builder => builder.Expire(TimeSpan.FromMinutes(30))
+    .AddPolicy<ValidatingCachePolicy>());
+
+    options.AddPolicy("WeatherCache", builder => builder
+        .Expire(TimeSpan.FromMinutes(30))
+        .VaryByValue((context) =>
+        {
+            return new KeyValuePair<string, string>("x", context.Request.Query["x"].ToString()[..5]);
+        })
+        .VaryByValue((context) =>
+        {
+            return new KeyValuePair<string, string>("y", context.Request.Query["y"].ToString()[..5]);
+        })
+        .SetVaryByQuery("")
+        .AddPolicy<ValidatingCachePolicy>()
+    );
+
     options.AddPolicy("Expire10min", builder =>
         builder.Expire(TimeSpan.FromMinutes(10)));
+
     options.AddPolicy("Expire30min", builder =>
         builder.Expire(TimeSpan.FromMinutes(30)));
 });
@@ -80,7 +98,7 @@ app.MapGet("/getForecast", async (string x, string y) =>
         return Results.Problem("Missing api key");
     }
 
-}).CacheOutput("ValidatingCache");
+}).CacheOutput("WeatherCache");
 
 
 app.Run();
